@@ -1,0 +1,18 @@
+# Source data and converted outputs are kept locally only, not published.
+/Tramdo/
+/Tramdo.rar
+*.xls
+/shp_output/
+
+# Windows thumbnail cache files
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+
+# Leftover temp files from conversion scripts, if run in place
+*.conv.geojson
+
+# Local working notes, not for publishing
+LICH_SU_TRO_CHUYEN.md

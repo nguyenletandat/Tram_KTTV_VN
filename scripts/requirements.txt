@@ -1,0 +1,5 @@
+geopandas
+pandas
+xlrd>=2.0
+pyproj
+shapely

@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vietnam KTTV Stations</title>
+<meta name="description" content="Interactive map of Vietnam's meteorological, hydrological, and water-quality monitoring stations.">
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+
+<style>
+/* layout: full-bleed Leaflet basemap; floating instrument card (top-left)
+   for search + layer toggles; a right-hand drawer slides in with full
+   station detail (incl. data-availability period) on marker click. */
+:root{
+  --bg:#eef3f1; --panel:#ffffff; --panel-2:#f4f8f7; --ink:#0f2b28; --muted:#5d8079;
+  --line:#d7e5e1; --accent:#0e7c6b; --accent-ink:#ffffff; --warn:#b5490a; --warn-bg:#fdeee3;
+  --shadow:0 10px 30px -10px rgba(15,43,40,.28), 0 2px 10px -2px rgba(15,43,40,.16);
+  --c-khituong:#d9790c; --c-thuyvan:#1f5fc4; --c-chatluong:#0f8f6f;
+  --c-khituong-b:#c99a3e; --c-thuyvan-b:#5b7fb0; --c-thuyvan-n:#2f9bb0;
+  color-scheme: light;
+}
+:root[data-theme="dark"]{
+  --bg:#0a1514; --panel:#132523; --panel-2:#0f1e1c; --ink:#eaf3f1; --muted:#8db0a8;
+  --line:#214542; --accent:#35d6b8; --accent-ink:#06211c; --warn:#ff8a5c; --warn-bg:#3a2015;
+  --shadow:0 10px 30px -10px rgba(0,0,0,.6), 0 2px 10px -2px rgba(0,0,0,.4);
+  --c-khituong:#f0a63f; --c-thuyvan:#5c9bf2; --c-chatluong:#3fe0bd;
+  --c-khituong-b:#d9b164; --c-thuyvan-b:#8fb0e0; --c-thuyvan-n:#52c7dd;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif; overflow:hidden;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace; font-feature-settings:"tnum"}
+a{color:var(--accent)}
+
+#map{position:fixed; inset:0; background:var(--bg);}
+.leaflet-control-attribution{font-size:10.5px !important;}
+
+.card{
+  background:var(--panel); border:1px solid var(--line); border-radius:14px;
+  box-shadow:var(--shadow);
+}
+
+/* ---------- top-left control card ---------- */
+#controls{
+  position:absolute; top:16px; left:16px; width:280px; max-width:calc(100vw - 32px);
+  max-height:calc(100vh - 32px); overflow-y:auto; z-index:800;
+  padding:16px 16px 12px; display:flex; flex-direction:column; gap:12px;
+}
+#controls .brand{display:flex; align-items:center; gap:9px;}
+#controls .brand-dot{
+  width:10px; height:10px; border-radius:50%; background:var(--accent); flex:none;
+  box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+#controls h1{margin:0; font-size:15.5px; font-weight:700; letter-spacing:.01em; line-height:1.25;}
+#controls .sub{font-size:11.5px; color:var(--muted); margin-top:1px;}
+#themeBtn{
+  margin-left:auto; width:30px; height:30px; border-radius:9px; border:1px solid var(--line);
+  background:var(--panel-2); color:var(--ink); cursor:pointer; font-size:14px; flex:none;
+  display:flex; align-items:center; justify-content:center;
+}
+#search{
+  width:100%; padding:9px 11px; border-radius:10px; border:1px solid var(--line);
+  background:var(--panel-2); color:var(--ink); font:13.5px/1.3 "IBM Plex Sans",sans-serif;
+}
+#search:focus{outline:2px solid var(--accent); outline-offset:1px;}
+#matches{font-size:11.5px; color:var(--muted); min-height:0;}
+#matches .match-row{
+  display:flex; justify-content:space-between; gap:8px; padding:6px 7px; border-radius:8px;
+  cursor:pointer; align-items:baseline;
+}
+#matches .match-row:hover{background:var(--panel-2)}
+#matches .match-row b{font-weight:600; color:var(--ink); font-size:12.5px;}
+#matches .match-row span{color:var(--muted); font-size:10.5px; white-space:nowrap;}
+#matches .match-empty{padding:6px 2px; color:var(--muted);}
+
+#controls hr{border:none; border-top:1px solid var(--line); margin:0;}
+.layer-row{
+  display:flex; align-items:center; gap:9px; padding:7px 6px; border-radius:9px;
+  cursor:pointer; user-select:none;
+}
+.layer-row:hover{background:var(--panel-2)}
+.layer-row input{accent-color:var(--accent); width:15px; height:15px; flex:none;}
+.swatch{width:11px; height:11px; border-radius:50%; flex:none; box-shadow:inset 0 0 0 1px rgba(0,0,0,.12);}
+.layer-label{flex:1; min-width:0; font-size:13px; font-weight:500;}
+.layer-count{font-size:11px; color:var(--muted);}
+.note{font-size:11px; color:var(--muted); line-height:1.55;}
+
+#toggleBtn{
+  display:none; position:absolute; top:16px; left:16px; width:44px; height:44px;
+  align-items:center; justify-content:center; font-size:18px; cursor:pointer;
+  color:var(--ink); z-index:900;
+}
+
+/* ---------- language switch (map control, top-right) ---------- */
+.lang-toggle{
+  display:flex; padding:3px; gap:2px; margin-bottom:8px;
+}
+.lang-toggle button{
+  border:none; background:transparent; color:var(--muted); font:600 11.5px/1 "IBM Plex Mono",monospace;
+  padding:7px 10px; border-radius:9px; cursor:pointer; letter-spacing:.02em;
+}
+.lang-toggle button.active{background:var(--accent); color:var(--accent-ink);}
+
+/* ---------- right detail drawer ---------- */
+#drawer{
+  position:absolute; top:150px; right:16px; bottom:16px; width:340px; z-index:950;
+  display:flex; flex-direction:column; transform:translateX(calc(100% + 24px));
+  transition:transform .28s cubic-bezier(.3,.9,.3,1); overflow:hidden;
+}
+#drawer.open{transform:translateX(0);}
+#drawer .dhead{
+  padding:18px 18px 14px; border-bottom:1px solid var(--line); flex:none; position:relative;
+}
+#drawer .dclose{
+  position:absolute; top:12px; right:12px; width:28px; height:28px; border-radius:8px;
+  border:1px solid var(--line); background:var(--panel-2); color:var(--muted);
+  cursor:pointer; font-size:14px; display:flex; align-items:center; justify-content:center;
+}
+#drawer .dkind{
+  display:inline-flex; align-items:center; gap:6px; font-size:10.5px; font-weight:600;
+  text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin-bottom:8px;
+}
+#drawer .dkind .dot{width:8px; height:8px; border-radius:50%;}
+#drawer .dname{font-size:19px; font-weight:700; line-height:1.3; text-wrap:balance; padding-right:26px;}
+#drawer .dname-en{font-size:13px; color:var(--muted); margin-top:2px;}
+#drawer .dbody{padding:14px 18px 18px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:16px;}
+#drawer .drow{display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-bottom:1px solid var(--line); font-size:13px;}
+#drawer .drow:last-child{border-bottom:none}
+#drawer .drow .k{color:var(--muted); flex:1 1 auto; min-width:0;}
+#drawer .drow .v{font-weight:500; text-align:right; flex:0 1 60%; min-width:0; overflow-wrap:break-word;}
+#drawer section .shead{
+  font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+  color:var(--accent); margin-bottom:6px; display:flex; align-items:center; gap:6px;
+}
+#drawer .timecard{
+  background:var(--panel-2); border:1px solid var(--line); border-radius:11px; padding:11px 13px;
+  display:flex; flex-direction:column; gap:7px;
+}
+#drawer .timecard .trow{display:flex; justify-content:space-between; gap:10px; font-size:12.5px;}
+#drawer .timecard .trow .k{color:var(--muted); flex:1 1 auto; min-width:0;}
+#drawer .timecard .trow .v{text-align:right; flex:0 1 55%; min-width:0; overflow-wrap:break-word;}
+#drawer .timecard.empty{color:var(--muted); font-size:12px; font-style:normal;}
+#drawer .flag{
+  background:var(--warn-bg); color:var(--warn); border-radius:10px; padding:10px 12px;
+  font-size:12px; line-height:1.5; display:flex; gap:8px;
+}
+#drawer .maplink{
+  font-size:12px; display:inline-flex; align-items:center; gap:5px; margin-top:2px;
+}
+#drawer-empty{
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  height:100%; text-align:center; gap:8px; padding:24px; color:var(--muted); font-size:12.5px;
+}
+
+@media (max-width: 760px){
+  #controls{
+    left:12px; right:12px; top:64px; width:auto; max-height:min(52vh,460px); display:none;
+  }
+  #controls.open{display:flex}
+  #toggleBtn{display:flex}
+  #drawer{
+    top:auto; left:0; right:0; bottom:0; width:auto; height:62vh;
+    border-radius:16px 16px 0 0; transform:translateY(105%);
+  }
+  #drawer.open{transform:translateY(0);}
+}
+
+.leaflet-control-zoom{box-shadow:var(--shadow) !important; border:1px solid var(--line) !important;}
+.leaflet-control-zoom a{
+  background:var(--panel) !important; color:var(--ink) !important; border-color:var(--line) !important;
+}
+.leaflet-control-zoom a:hover{background:var(--panel-2) !important;}
+.marker-cluster-custom{
+  display:flex; align-items:center; justify-content:center; border-radius:50%;
+  color:#fff; font:600 12px/1 "IBM Plex Mono",monospace; border:2px solid var(--panel);
+}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<button id="toggleBtn" class="card" aria-label="Open control panel">☰</button>
+
+<div id="controls" class="card">
+  <div class="brand">
+    <span class="brand-dot"></span>
+    <div>
+      <h1 id="txtBrand">Vietnam KTTV Stations</h1>
+      <div class="sub" id="txtSub">Meteorology · Hydrology · Water quality</div>
+    </div>
+    <button id="themeBtn" aria-label="Toggle light/dark theme">◐</button>
+  </div>
+
+  <input id="search" type="text" placeholder="Search station name…" autocomplete="off">
+  <div id="matches"></div>
+
+  <hr>
+  <div id="layerList"></div>
+</div>
+
+<div id="drawer" class="card">
+  <div id="drawer-empty">
+    <div style="font-size:22px">◎</div>
+    <div id="txtEmptyDrawer">Select a station on the map<br>to see its details.</div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+// ---------------- i18n ----------------
+var I18N = {
+  en: {
+    brand: "Vietnam KTTV Stations",
+    sub: "Meteorology · Hydrology · Water quality",
+    searchPlaceholder: "Search station name…",
+    noMatch: "No matching stations found.",
+    emptyDrawerHtml: "Select a station on the map<br>to see its details.",
+    sectionInfo: "Station info",
+    sectionTime: "Data availability",
+    noTimeData: "No digitised record-period information for stations in this layer.",
+    noName: "(unnamed)",
+    mapsLink: "↗ Open in Google Maps",
+    closeAria: "Close",
+    toggleAria: "Open control panel",
+    themeAria: "Toggle light/dark theme",
+    fetchError: "Could not load station data: ",
+    layers: {
+      khituong: "Meteorological stations", thuyvan: "Hydrological stations",
+      chatluong: "Water quality", khituong_b: "Meteorology (supplementary)",
+      thuyvan_dms: "Hydrology (supplementary, nationwide)",
+      thuyvan_nam: "Hydrology (supplementary, South)"
+    },
+    fields: {
+      stacode:"Station code (Clicom)", elev:"Elevation", statype:"Station type",
+      river:"River", riversys:"River system", stationclass:"Station class",
+      catchment:"Catchment area", periodofrecord:"Period of record",
+      yearbuilt:"Year established", measured:"Measured factors",
+      structure:"Measuring structure", province:"Province",
+      rec_water:"Water-level record", rec_rain:"Rainfall record",
+      rec_discharge:"Discharge record", coord:"Coordinates"
+    },
+    flagThuyvan: "The original Vietnamese station name is corrupted by a legacy font encoding (TCVN3) in the source file and could not be recovered — the English name above is reliable."
+  },
+  vi: {
+    brand: "Trạm KTTV Việt Nam",
+    sub: "Khí tượng · Thuỷ văn · Chất lượng nước",
+    searchPlaceholder: "Tìm tên trạm…",
+    noMatch: "Không tìm thấy trạm nào.",
+    emptyDrawerHtml: "Chọn một trạm trên bản đồ<br>để xem thông tin chi tiết.",
+    sectionInfo: "Thông tin trạm",
+    sectionTime: "Thời gian dữ liệu",
+    noTimeData: "Chưa số hoá thông tin thời kỳ/chuỗi số liệu cho trạm thuộc lớp này.",
+    noName: "(không tên)",
+    mapsLink: "↗ Mở trên Google Maps",
+    closeAria: "Đóng",
+    toggleAria: "Mở bảng điều khiển",
+    themeAria: "Đổi giao diện sáng/tối",
+    fetchError: "Không tải được dữ liệu trạm: ",
+    layers: {
+      khituong: "Trạm khí tượng", thuyvan: "Trạm thuỷ văn",
+      chatluong: "Chất lượng nước", khituong_b: "Khí tượng (bổ sung)",
+      thuyvan_dms: "Thuỷ văn (bổ sung, cả nước)",
+      thuyvan_nam: "Thuỷ văn (bổ sung, miền Nam)"
+    },
+    fields: {
+      stacode:"Mã trạm (Clicom)", elev:"Độ cao", statype:"Loại trạm",
+      river:"Sông", riversys:"Hệ thống sông", stationclass:"Hạng trạm",
+      catchment:"Diện tích lưu vực", periodofrecord:"Thời kỳ có số liệu",
+      yearbuilt:"Năm xây dựng", measured:"Yếu tố đo",
+      structure:"Công trình đo", province:"Tỉnh",
+      rec_water:"Chuỗi số liệu mực nước", rec_rain:"Chuỗi số liệu mưa",
+      rec_discharge:"Chuỗi số liệu lưu lượng", coord:"Toạ độ"
+    },
+    flagThuyvan: "Tên trạm tiếng Việt gốc bị lỗi font trong file nguồn (TCVN3) và chưa khôi phục được — tên tiếng Anh ở trên vẫn đáng tin cậy."
+  }
+};
+var LANG_KEY = "tramkttv-lang";
+var lang = "en";
+try{ lang = localStorage.getItem(LANG_KEY) || "en"; }catch(e){}
+function t(){ return I18N[lang]; }
+
+var LAYERS = [
+  { key:"khituong", file:"stations_khituong.json",
+    color:"var(--c-khituong)", default:true,
+    name:function(p){return p.TEN_TRAM || null;}, nameEn:function(p){return p.TEN_TRAM_E || null;},
+    meta:function(p){
+      var r=[];
+      if(p.MA_CLICOM) r.push(["stacode", p.MA_CLICOM]);
+      if(p.DOCAO!=null) r.push(["elev", p.DOCAO+" m"]);
+      if(p.LOAITRAM) r.push(["statype", p.LOAITRAM]);
+      return r;
+    },
+    time:function(p){
+      if(!p.THOIKYCOSO) return [];
+      return [["periodofrecord", p.THOIKYCOSO]];
+    } },
+
+  { key:"thuyvan", file:"stations_thuyvan.json",
+    color:"var(--c-thuyvan)", default:true,
+    name:function(p){return p.STATION || null;}, nameEn:function(p){return p.STATION_EN || null;},
+    meta:function(p){
+      var r=[];
+      if(p.RIVER) r.push(["river", p.RIVER]);
+      if(p.RIVER_SYST) r.push(["riversys", p.RIVER_SYST]);
+      if(p.STA_LEVEL) r.push(["stationclass", p.STA_LEVEL]);
+      if(p.F) r.push(["catchment", p.F+" km²"]);
+      return r;
+    },
+    time:function(){ return []; },
+    flag:function(p){ return p.NAME_OK===false ? "flagThuyvan" : null; } },
+
+  { key:"chatluong", file:"stations_chatluong.json",
+    color:"var(--c-chatluong)", default:true,
+    name:function(p){return p.Name_st || null;}, nameEn:function(p){return p.Name_st_en || null;},
+    meta:function(){return [];}, time:function(){return [];} },
+
+  { key:"khituong_b", file:"stations_khituong_bosung.json",
+    color:"var(--c-khituong-b)", default:false,
+    name:function(p){return p.Ten_tram || null;}, nameEn:function(){return null;},
+    meta:function(p){
+      var r=[]; if(p.Ma_Clicom) r.push(["stacode", p.Ma_Clicom]);
+      if(p.Docao!=null) r.push(["elev", p.Docao+" m"]); return r;
+    },
+    time:function(){ return []; } },
+
+  { key:"thuyvan_dms", file:"stations_thuyvan_dms.json",
+    color:"var(--c-thuyvan-b)", default:false,
+    name:function(p){return p.Dai_tram || null;}, nameEn:function(){return null;},
+    meta:function(p){
+      var r=[];
+      if(p.Song) r.push(["river", p.Song]);
+      if(p.HT_song) r.push(["riversys", p.HT_song]);
+      if(p.Hang) r.push(["stationclass", p.Hang]);
+      if(p.F_km2) r.push(["catchment", p.F_km2+" km²"]);
+      return r;
+    },
+    time:function(p){
+      var r=[];
+      if(p.Nam_XD) r.push(["yearbuilt", p.Nam_XD]);
+      if(p.Yeu_to_do) r.push(["measured", p.Yeu_to_do]);
+      if(p.Cong_trinh) r.push(["structure", p.Cong_trinh]);
+      return r;
+    } },
+
+  { key:"thuyvan_nam", file:"stations_thuyvan_nam.json",
+    color:"var(--c-thuyvan-n)", default:false,
+    name:function(p){return p.Ten_tram || null;}, nameEn:function(){return null;},
+    meta:function(p){
+      var r=[]; if(p.Ten_song) r.push(["river", p.Ten_song]); if(p.Ten_tinh) r.push(["province", p.Ten_tinh]);
+      return r;
+    },
+    time:function(p){
+      var r=[];
+      if(p.TG_MucNuoc) r.push(["rec_water", p.TG_MucNuoc]);
+      if(p.TG_Mua) r.push(["rec_rain", p.TG_Mua]);
+      if(p.TG_LuuLuon) r.push(["rec_discharge", p.TG_LuuLuon]);
+      return r;
+    } }
+];
+
+function resolveColor(cssVarExpr){
+  return getComputedStyle(document.body).getPropertyValue(cssVarExpr.slice(4,-1)).trim() || "#888";
+}
+function primaryName(rec){
+  if(lang === "en") return rec.name_en || rec.name_vi || t().noName;
+  return rec.name_vi || rec.name_en || t().noName;
+}
+function secondaryName(rec){
+  var p = lang === "en" ? rec.name_vi : rec.name_en;
+  var isSameAsPrimary = p === (lang === "en" ? (rec.name_en||rec.name_vi) : (rec.name_vi||rec.name_en));
+  return (p && !isSameAsPrimary) ? p : null;
+}
+
+// ---------------- theme ----------------
+var root = document.documentElement;
+var THEME_KEY = "tramkttv-theme";
+function applyTheme(th){
+  if(th === "dark"){ root.setAttribute("data-theme","dark"); }
+  else { root.removeAttribute("data-theme"); }
+  document.getElementById("themeBtn").textContent = (th === "dark") ? "☀" : "☾";
+  if(window._tileLayer) setTileForTheme(th);
+}
+function currentSystemTheme(){
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+var savedTheme = null;
+try{ savedTheme = localStorage.getItem(THEME_KEY); }catch(e){}
+var theme = savedTheme || currentSystemTheme();
+applyTheme(theme);
+document.getElementById("themeBtn").onclick = function(){
+  theme = (theme === "dark") ? "light" : "dark";
+  try{ localStorage.setItem(THEME_KEY, theme); }catch(e){}
+  applyTheme(theme);
+};
+
+// ---------------- map ----------------
+var map = L.map("map", { zoomControl:false, attributionControl:true, minZoom:4, maxZoom:16 })
+  .setView([16.0, 107.5], 6);
+
+var LangControl = L.Control.extend({
+  options:{ position:"topright" },
+  onAdd:function(){
+    var div = L.DomUtil.create("div", "card lang-toggle");
+    div.innerHTML = '<button data-lang="en">EN</button><button data-lang="vi">VI</button>';
+    L.DomEvent.disableClickPropagation(div);
+    Array.prototype.forEach.call(div.querySelectorAll("button"), function(btn){
+      btn.onclick = function(){ setLang(btn.getAttribute("data-lang")); };
+    });
+    this._div = div;
+    return div;
+  },
+  refresh:function(){
+    if(!this._div) return;
+    Array.prototype.forEach.call(this._div.querySelectorAll("button"), function(btn){
+      btn.classList.toggle("active", btn.getAttribute("data-lang") === lang);
+    });
+  }
+});
+var langControl = new LangControl();
+map.addControl(langControl);
+L.control.zoom({ position:"topright" }).addTo(map);
+L.control.scale({ position:"bottomleft", imperial:false }).addTo(map);
+
+var TILE_LIGHT = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+var TILE_DARK  = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+var TILE_ATTR = 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, GIS user community';
+
+function setTileForTheme(th){
+  var url = (th === "dark") ? TILE_DARK : TILE_LIGHT;
+  if(window._tileLayer){ map.removeLayer(window._tileLayer); }
+  window._tileLayer = L.tileLayer(url, { attribution:TILE_ATTR, maxZoom:16 }).addTo(map);
+  window._tileLayer.bringToBack();
+}
+setTileForTheme(theme);
+
+// ---------------- data & markers ----------------
+var allPoints = [];
+var clusterGroups = {};
+var layerVisible = {};
+var selectedMarker = null, selectedRing = null, selectedRec = null;
+
+LAYERS.forEach(function(L0){ layerVisible[L0.key] = L0.default; });
+
+function makeClusterIcon(color){
+  return function(cluster){
+    var count = cluster.getChildCount();
+    var size = count < 10 ? 28 : count < 100 ? 34 : 42;
+    return L.divIcon({
+      html:'<div class="marker-cluster-custom" style="width:'+size+'px;height:'+size+'px;background:'+color+'">'+count+'</div>',
+      className:"", iconSize:[size,size]
+    });
+  };
+}
+
+Promise.all(LAYERS.map(function(L0){ return fetch(L0.file).then(function(r){ return r.json(); }); }))
+.then(function(results){
+  LAYERS.forEach(function(L0, i){
+    var colorResolved = resolveColor(L0.color);
+    var group = L.markerClusterGroup({
+      iconCreateFunction: makeClusterIcon(colorResolved),
+      spiderfyOnMaxZoom:true, showCoverageOnHover:false, maxClusterRadius:48
+    });
+    var fc = results[i];
+    fc.features.forEach(function(f){
+      var c = f.geometry && f.geometry.coordinates;
+      if(!c) return;
+      var rec = {
+        key:L0.key, layer:L0, lon:c[0], lat:c[1],
+        name_vi:L0.name(f.properties), name_en:L0.nameEn(f.properties),
+        meta:L0.meta(f.properties), time:L0.time(f.properties),
+        flagKey:L0.flag ? L0.flag(f.properties) : null
+      };
+      allPoints.push(rec);
+      var marker = L.circleMarker([c[1],c[0]], {
+        radius:5, weight:1.4, color:"#fff", fillColor:colorResolved, fillOpacity:.92
+      });
+      marker.on("click", function(){ selectPoint(rec, marker); });
+      marker._rec = rec;
+      group.addLayer(marker);
+      rec._marker = marker;
+    });
+    clusterGroups[L0.key] = group;
+    if(layerVisible[L0.key]) map.addLayer(group);
+  });
+  renderLayerList();
+})
+.catch(function(err){
+  console.error(err);
+  var d = document.createElement("div");
+  d.className = "card"; d.style.cssText = "position:absolute;top:16px;left:310px;padding:12px 16px;color:#c0392b;font-size:12.5px;z-index:900;max-width:300px";
+  d.textContent = t().fetchError + err;
+  document.body.appendChild(d);
+});
+
+function renderLayerList(){
+  var counts = {};
+  LAYERS.forEach(function(L0){ counts[L0.key] = allPoints.filter(function(p){return p.key===L0.key;}).length; });
+  var list = document.getElementById("layerList");
+  list.innerHTML = "";
+  LAYERS.forEach(function(L0){
+    var row = document.createElement("label");
+    row.className = "layer-row";
+    row.innerHTML =
+      '<input type="checkbox" '+(layerVisible[L0.key]?"checked":"")+'>'+
+      '<span class="swatch" style="background:'+L0.color+'"></span>'+
+      '<span class="layer-label">'+t().layers[L0.key]+'</span>'+
+      '<span class="layer-count mono">'+counts[L0.key]+'</span>';
+    row.querySelector("input").addEventListener("change", function(){
+      layerVisible[L0.key] = this.checked;
+      var g = clusterGroups[L0.key];
+      if(!g) return;
+      if(this.checked) map.addLayer(g); else map.removeLayer(g);
+    });
+    list.appendChild(row);
+  });
+}
+
+// ---------------- detail drawer ----------------
+var drawer = document.getElementById("drawer");
+
+function closeDrawer(){
+  drawer.classList.remove("open");
+  if(selectedRing){ map.removeLayer(selectedRing); selectedRing = null; }
+  selectedMarker = null; selectedRec = null;
+}
+
+function selectPoint(rec, marker){
+  selectedRec = rec;
+  if(selectedRing){ map.removeLayer(selectedRing); }
+  selectedRing = L.circleMarker(marker.getLatLng(), {
+    radius:11, weight:2.5, color: resolveColor(rec.layer.color),
+    fillOpacity:0, className:"sel-ring"
+  }).addTo(map);
+  selectedMarker = marker;
+
+  var metaRows = rec.meta.map(function(r){
+    return '<div class="drow"><span class="k">'+t().fields[r[0]]+'</span><span class="v">'+r[1]+'</span></div>';
+  }).join("");
+
+  var timeRows = rec.time.map(function(r){
+    return '<div class="trow"><span class="k">'+t().fields[r[0]]+'</span><span class="v">'+r[1]+'</span></div>';
+  }).join("");
+  var timeBlock = rec.time.length
+    ? '<div class="timecard">'+timeRows+'</div>'
+    : '<div class="timecard empty">'+t().noTimeData+'</div>';
+
+  var flagBlock = rec.flagKey ? '<div class="flag">⚠&nbsp; '+t()[rec.flagKey]+'</div>' : "";
+  var secondary = secondaryName(rec);
+  var enBlock = secondary ? '<div class="dname-en">'+secondary+'</div>' : "";
+  var mapsUrl = "https://www.google.com/maps?q="+rec.lat.toFixed(6)+","+rec.lon.toFixed(6);
+  var coordRow = '<div class="drow"><span class="k">'+t().fields.coord+'</span><span class="v mono">'+rec.lat.toFixed(4)+'°, '+rec.lon.toFixed(4)+'°</span></div>';
+
+  drawer.innerHTML =
+    '<div class="dhead">'+
+      '<button class="dclose" aria-label="'+t().closeAria+'">✕</button>'+
+      '<div class="dkind"><span class="dot" style="background:'+rec.layer.color+'"></span>'+t().layers[rec.key]+'</div>'+
+      '<div class="dname">'+primaryName(rec)+'</div>'+
+      enBlock+
+    '</div>'+
+    '<div class="dbody">'+
+      '<section><div class="shead">'+t().sectionInfo+'</div><div>'+metaRows+coordRow+'</div></section>'+
+      '<section><div class="shead">'+t().sectionTime+'</div>'+timeBlock+'</section>'+
+      flagBlock+
+      '<a class="maplink" href="'+mapsUrl+'" target="_blank" rel="noopener">'+t().mapsLink+'</a>'+
+    '</div>';
+
+  drawer.querySelector(".dclose").onclick = closeDrawer;
+  drawer.classList.add("open");
+}
+
+document.addEventListener("keydown", function(ev){ if(ev.key === "Escape") closeDrawer(); });
+
+// ---------------- search ----------------
+var searchBox = document.getElementById("search");
+var matchesBox = document.getElementById("matches");
+function runSearch(){
+  var q = searchBox.value.trim().toLowerCase();
+  if(q.length < 2){ matchesBox.innerHTML = ""; return; }
+  var hits = allPoints.filter(function(p){
+    return (p.name_vi && p.name_vi.toLowerCase().indexOf(q) !== -1) ||
+           (p.name_en && p.name_en.toLowerCase().indexOf(q) !== -1);
+  }).slice(0, 8);
+  if(hits.length === 0){ matchesBox.innerHTML = '<div class="match-empty">'+t().noMatch+'</div>'; return; }
+  matchesBox.innerHTML = hits.map(function(h, idx){
+    return '<div class="match-row" data-idx="'+idx+'"><b>'+primaryName(h)+'</b><span>'+t().layers[h.key]+'</span></div>';
+  }).join("");
+  Array.prototype.forEach.call(matchesBox.querySelectorAll(".match-row"), function(el, idx){
+    el.onclick = function(){ goToPoint(hits[idx]); };
+  });
+}
+searchBox.addEventListener("input", runSearch);
+
+function goToPoint(rec){
+  if(!layerVisible[rec.key]){
+    layerVisible[rec.key] = true;
+    map.addLayer(clusterGroups[rec.key]);
+    renderLayerList();
+  }
+  map.setView([rec.lat, rec.lon], 12, { animate:true });
+  var group = clusterGroups[rec.key];
+  // give the map a moment to settle before (un)spiderfying to the marker
+  setTimeout(function(){
+    if(group && group.zoomToShowLayer){
+      group.zoomToShowLayer(rec._marker, function(){ selectPoint(rec, rec._marker); });
+    } else {
+      selectPoint(rec, rec._marker);
+    }
+  }, 50);
+}
+
+// ---------------- language ----------------
+function applyStaticText(){
+  document.documentElement.lang = lang;
+  document.title = (lang === "en") ? "Vietnam KTTV Stations" : "Trạm KTTV Việt Nam";
+  document.getElementById("txtBrand").textContent = t().brand;
+  document.getElementById("txtSub").textContent = t().sub;
+  var emptyEl = document.getElementById("txtEmptyDrawer");
+  if(emptyEl) emptyEl.innerHTML = t().emptyDrawerHtml;
+  searchBox.placeholder = t().searchPlaceholder;
+  document.getElementById("themeBtn").setAttribute("aria-label", t().themeAria);
+  document.getElementById("toggleBtn").setAttribute("aria-label", t().toggleAria);
+  langControl.refresh();
+  renderLayerList();
+  runSearch();
+  if(selectedRec){ selectPoint(selectedRec, selectedMarker); }
+}
+function setLang(l){
+  if(l === lang) return;
+  lang = l;
+  try{ localStorage.setItem(LANG_KEY, lang); }catch(e){}
+  applyStaticText();
+}
+applyStaticText();
+
+// ---------------- mobile panel toggle ----------------
+var toggleBtn = document.getElementById("toggleBtn");
+var controls = document.getElementById("controls");
+toggleBtn.onclick = function(){ controls.classList.toggle("open"); };
+
+})();
+</script>
+</body>
+</html>
